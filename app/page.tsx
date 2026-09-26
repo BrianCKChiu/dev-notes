@@ -1,10 +1,10 @@
-import { Editor } from "@/components/lexical"
-import { Button } from "@/components/ui/button"
+import { Chat } from "@/components/chat";
+
 
 export default function Page() {
   return (
     <div className="h-full w-full">
-      <Editor />
+      <Chat id={null} />
     </div>
   )
 }
