@@ -1,7 +1,14 @@
 "use client"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { prisma } from "@/lib/prisma"
 import { useChatStore } from "../store/chatStore"
+import { Copy, CopyIcon, CornerLeftUp, ThumbsDownIcon, CornerRightUp, Paperclip, ChevronDownIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble"
+import { Message, MessageContent, MessageFooter } from "@/components/ui/message"
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupTextarea } from "@/components/ui/input-group"
+import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { v4 as uuidv4 } from 'uuid';
 
 export function Chat({ id = null }: { id: string | null }) {
     const DEFAULT_MESSAGE_LOAD_COUNT = 16
@@ -10,6 +17,29 @@ export function Chat({ id = null }: { id: string | null }) {
     const isNewChat = useChatStore((s) => s.isNewChat)
     const setMessages = useChatStore((s) => s.setMessages)
     const setChatId = useChatStore((s) => s.setChatId)
+
+    const [messageHistory, updateMessageHistory] = useState<MessageObject[]>([]);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+
+
+    const sendMessage = useCallback(() => {
+        if (inputRef === null) return;
+        console.log("Hello")
+        const inputString = inputRef.current?.value.trim();
+
+        if (inputString === "" || inputString == null) return;
+
+        const message : MessageObject = {
+            id: uuidv4(),
+            content: inputString,
+            sender: "user",
+            dateTime: Date.now.toString()
+        }
+        updateMessageHistory([...messageHistory, message])
+    },[messageHistory])
+
+
+
 
 
     // const loadMessages = useCallback(async () => {
@@ -59,14 +89,32 @@ export function Chat({ id = null }: { id: string | null }) {
                 <div className="w-full h-17 border-b"></div>
                 {/* Chat Messages */}
                 <div className="w-full h-full overflow-scroll">
-                    <UserMessageBubble  text="Hello World"/>
-                    <UserMessageBubble  text="A very very long message, where it'll wrap to a new line. Message is fun"/>
-                    <UserMessageBubble  text="A very very long message, where it'll wrap to a new line. Message is fun"/>
-
-
+                    {messageHistory.map((m) => {
+                        return <MessageBubble key={m.id} text={m.content} type={m.sender}/>
+                    })}
                 </div>
                 {/* Input */}
-                <div className="w-full h-15 border-t"></div>
+                <div className="w-full border-t">
+                    <InputGroup>
+                        <InputGroupTextarea placeholder="Ask Me Anything..." ref={inputRef}/>
+                        <InputGroupAddon align={"block-end"} className="flex flex-row gap-1 justify-end">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <InputGroupButton disabled variant={"ghost"}>
+                                    GPT 5.2 <ChevronDownIcon className="size-3" />
+                                    </InputGroupButton>
+                                </DropdownMenuTrigger>
+                            </DropdownMenu>
+                            <InputGroupButton variant={"ghost"} aria-label="Attatch">
+                                <Paperclip />
+                            </InputGroupButton>
+                            <InputGroupButton variant="default" aria-label="Send" onClick={sendMessage}>
+                                Send <CornerRightUp size={24} />
+                            </InputGroupButton>
+                        </InputGroupAddon>
+
+                    </InputGroup>
+                </div>
             </div>
         </div>
     </div>
@@ -76,14 +124,42 @@ type MessageObject = {
     id: string,
     content: string,
     dateTime: string,
-    sender: Sender,
-    type: string, // TODO: make this into type
+    sender: "user" | ""
 }
-
 type Sender = "USER" | "ASSISTANT"; // TODO: replace client 
 
+function MessageBubble({ type, text }: { type: string, text: string }) {
 
-function UserMessageBubble({text, error = false}: {text: string, error?: boolean}){
-    return <div className="ml-auto mr-3 my-3 px-3 py-2 bg-gray-200 rounded-lg w-max wrap-break-words max-w-[80%]">{text}</div>
+    return <div className="flex flex-row gap-2 py-3 mx-3">
+        <Message align={type === "user" ? "end" : "start"}>
+            <MessageContent>
+                <Bubble>
+                    <BubbleContent>
+                        {text}
+                    </BubbleContent>
 
+                </Bubble>
+            </MessageContent>
+        </Message>
+    </div>
+
+}
+
+
+function UserMessageBubble({ text, error = false }: { text: string, error?: boolean }) {
+    const messageBubbleClassName = `ml-auto mr-3 px-3 py-2 rounded-lg w-max wrap-break-words max-w-[80%] ${error ? "bg-red-300 border border-red-400" : "bg-gray-200"}`
+
+    return <Bubble align="end">
+        <BubbleContent>
+            {text}
+        </BubbleContent>
+
+    </Bubble>
+}
+
+
+function AssistantMessageBubble() {
+    return <div className="border-t border-b border-gray-200 bg-gray-50 py-6 px-6">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed sodales et nibh eu gravida. In gravida dapibus leo. Curabitur accumsan ex congue porttitor cursus. Aenean pharetra vulputate velit, et fermentum enim dapibus sit amet. Etiam gravida efficitur purus et lobortis. Ut vulputate tincidunt est, in pretium leo convallis quis. Nullam faucibus suscipit nunc bibendum lobortis. Curabitur lobortis metus vitae eros fermentum condimentum. Ut nec magna malesuada, dictum leo in, dignissim nunc. Praesent semper nisi quis ante elementum, vitae sodales tellus bibendum. Proin vitae scelerisque velit. Etiam urna velit, sodales rutrum nunc eu, mollis interdum sapien. Cras viverra aliquam mi a tristique. Praesent tempor tortor eu dui efficitur, at convallis ipsum varius. Vivamus aliquet lacus porta elit malesuada faucibus. In porta lobortis turpis id ultrices.
+    </div>
 }
