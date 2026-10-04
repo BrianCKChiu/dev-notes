@@ -1,12 +1,10 @@
 "use client"
-import { SyntheticEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { prisma } from "@/lib/prisma"
-import { useChatStore } from "../store/chatStore"
-import { Copy, CopyIcon, CornerLeftUp, ThumbsDownIcon, CornerRightUp, Paperclip, ChevronDownIcon, RotateCcw } from "lucide-react"
+import { SyntheticEvent, useCallback, useEffect, useRef, useState } from "react"
+import { CopyIcon, CornerRightUp, Paperclip, ChevronDownIcon, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble"
-import { Message, MessageContent, MessageFooter } from "@/components/ui/message"
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupTextarea } from "@/components/ui/input-group"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import { Message, MessageContent } from "@/components/ui/message"
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { v4 as uuidv4 } from 'uuid';
 import OpenAI from "openai";
@@ -35,30 +33,35 @@ type FileAttatchment = {
     bucketUrl?: string
 }
 
+type MessageObject = {
+    id: string,
+    content: string,
+    dateTime: string,
+    role: "user" | "assistant" | "developer"
+}
+
 
 export function Chat({ id = null }: { id: string | null }) {
-    const DEFAULT_MESSAGE_LOAD_COUNT = 16
 
-    const chatId = useChatStore((s) => s.chatId)
-    const isNewChat = useChatStore((s) => s.isNewChat)
-    const setMessages = useChatStore((s) => s.setMessages)
-    const setChatId = useChatStore((s) => s.setChatId)
-    const [conversationId, setCnversationId] = useState<string | null>(null)
-    const [messageHistory, updateMessageHistory] = useState<MessageObject[]>([]);
-    const [isSending, setIsSending] = useState<boolean>(false);
+    // GUI features, currently disabled but will be enabled and refactored after the bastic features are working and refactored
     const [chatHistoryWidth, setChatHistoryWidth] = useState<number>(250);
     const [windowMiddle, setWindowMiddle] = useState<number>(200);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // File Drag and Drop
+    // File upload 
     const fileDropOffRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState<boolean>(false)
+    const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
+    const ALLOWED_FILE_TYPES: string[] = []; //TODO
 
-
+    // Messaging states
     const openai = new OpenAI({
         apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
         dangerouslyAllowBrowser: true
     });
+    const [conversationId, setCnversationId] = useState<string | null>(null)
+    const [messageHistory, updateMessageHistory] = useState<MessageObject[]>([]);
+    const [isSending, setIsSending] = useState<boolean>(false);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const initializeConversation = useCallback(async () => {
         if (conversationId !== null) return;
@@ -71,6 +74,7 @@ export function Chat({ id = null }: { id: string | null }) {
     useEffect(() => {
         initializeConversation();
     }, [initializeConversation])
+
     // const updateWindowMiddle = useCallback(() => {
     //     const middle = window.innerWidth / 2;
     //     setWindowMiddle(middle);
@@ -124,8 +128,6 @@ export function Chat({ id = null }: { id: string | null }) {
             dateTime: Date.now.toString()
         };
 
-
-
         const history = [...messageHistory, message, responseMessage];
         updateMessageHistory(history);
         console.log(history)
@@ -145,8 +147,6 @@ export function Chat({ id = null }: { id: string | null }) {
             store: true,
 
         });
-
-
 
         for await (const event of stream) {
             if (event.type === "response.output_text.delta" || event.type === "response.refusal.delta") {
@@ -176,10 +176,6 @@ export function Chat({ id = null }: { id: string | null }) {
 
 
     useEffect(() => {
-
-        const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
-        const ALLOWED_FILE_TYPES: string[] = []; //TODO
-
         if (fileDropOffRef.current === null) return;
 
         const fileDropZone = fileDropOffRef.current;
@@ -226,10 +222,7 @@ export function Chat({ id = null }: { id: string | null }) {
         const handleFileDrop = (e: DragEvent) => {
             e.preventDefault();
             setIsDragging(false);
-
-
         };
-
 
         document.addEventListener('dragover', handleWindowDragOver)
         document.addEventListener('drop', handleFileDrop)
@@ -242,12 +235,7 @@ export function Chat({ id = null }: { id: string | null }) {
                 fileDropZone.removeEventListener('drop', handleFileDrop);
             }
         }
-    }, [fileDropOffRef])
-
-
-
-
-
+    }, [ALLOWED_FILE_TYPES, MAX_FILE_SIZE, fileDropOffRef])
 
     return <div className="w-full h-full border rounded-lg">
         <div className="flex h-full w-full">
@@ -316,13 +304,6 @@ export function Chat({ id = null }: { id: string | null }) {
     </div>
 }
 
-type MessageObject = {
-    id: string,
-    content: string,
-    dateTime: string,
-    role: "user" | "assistant" | "developer"
-}
-
 function MessageBubble({ type, text }: { type: string, text: string }) {
 
     return <div className="flex flex-row gap-2 py-3">
@@ -336,7 +317,6 @@ function MessageBubble({ type, text }: { type: string, text: string }) {
 
 }
 
-
 function UserMessageBubble({ text, error = false }: { text: string, error?: boolean }) {
     return <Bubble>
         <BubbleContent>
@@ -344,7 +324,6 @@ function UserMessageBubble({ text, error = false }: { text: string, error?: bool
         </BubbleContent>
     </Bubble>
 }
-
 
 function AssistantMessageBubble({ text }: { text: string }) {
     return <div className="border-t border-b border-gray-200 bg-gray-50 pt-10 px-6 group">
