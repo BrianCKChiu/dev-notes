@@ -30,9 +30,6 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <div className="flex h-screen w-screen">
-            <div className="h-full min-w-[200px] border-r p-3">
-              <div className="">{/* Sidebar */}</div>
-            </div>
             <div className="flex-1">{children}</div>
           </div>
         </ThemeProvider>
