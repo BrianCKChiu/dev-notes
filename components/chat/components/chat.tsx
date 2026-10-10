@@ -10,6 +10,10 @@ import { v4 as uuidv4 } from 'uuid';
 import OpenAI from "openai";
 import { Resizable, ResizeCallbackData } from 'react-resizable';
 import 'react-resizable/css/styles.css';
+import { Markdown } from '@tanstack/markdown/react'
+import { streamingMarkdownExtension } from '@tanstack/markdown/extensions/streaming'
+import { highlightMarkdownCode } from "./markdown-highlighter"
+import { markdownComponents } from "./custom-elements"
 
 type MessagePayload = { content: string, role: "user" | "assistant" | "developer" }
 
@@ -38,6 +42,8 @@ type MessageObject = {
     content: string,
     dateTime: string,
     role: "user" | "assistant" | "developer"
+    status?: "writing" | "complete" | "error"
+    errorType?: string
 }
 
 
@@ -125,50 +131,65 @@ export function Chat({ id = null }: { id: string | null }) {
             id: uuidv4(),
             content: "",
             role: "assistant",
-            dateTime: Date.now.toString()
+            dateTime: Date.now.toString(),
+            status: "writing"
         };
 
         const history = [...messageHistory, message, responseMessage];
         updateMessageHistory(history);
         console.log(history)
 
-
-        const stream = await openai.responses.create({
-            model: "gpt-5.5",
-            conversation: conversationId,
-            input: history.map(({ content, role }) => ({ content, role })),
-            text: {
-                "format": {
-                    "type": "text"
+        try {
+            const stream = await openai.responses.create({
+                model: "gpt-5.5",
+                conversation: conversationId,
+                input: history.map(({ content, role }) => ({ content, role })),
+                text: {
+                    "format": {
+                        "type": "text"
+                    },
+                    "verbosity": "medium"
                 },
-                "verbosity": "medium"
-            },
-            stream: true,
-            store: true,
+                stream: true,
+                store: true,
 
-        });
+            });
 
-        for await (const event of stream) {
-            if (event.type === "response.output_text.delta" || event.type === "response.refusal.delta") {
-                const content = responseMessage.content + event.delta
-                responseMessage = {
-                    ...responseMessage,
-                    content
+            for await (const event of stream) {
+                if (event.type === "response.output_text.delta" || event.type === "response.refusal.delta") {
+                    const content = responseMessage.content + event.delta
+                    responseMessage = {
+                        ...responseMessage,
+                        content
+                    }
+
+                    updateMessageHistory((t) => {
+                        const n = t.map((m) => {
+                            if (m.id === responseMessage.id) {
+                                m.content = content;
+                            }
+                            return m;
+                        })
+                        return n
+                    });
+                    console.log(content)
+                } else if (event.type === "response.failed") {
+
+                    updateMessageHistory((t) => {
+                        const n = t.map((m) => {
+                            if (m.id === responseMessage.id) {
+                                m.status = "error"
+                                m.errorType = event.response.error?.message
+                            }
+                            return m;
+                        })
+                        return n
+                    });
+                    throw new Error(event.response.error?.message ?? "Response generation failed");
                 }
-
-                updateMessageHistory((t) => {
-                    const n = t.map((m) => {
-                        if (m.id === responseMessage.id) {
-                            m.content = content;
-                        }
-                        return m;
-                    })
-                    return n
-                });
-                console.log(content)
-            } else if (event.type === "response.failed") {
-                throw new Error(event.response.error?.message ?? "Response generation failed");
             }
+        } catch (e) {
+            console.error(e)
         }
 
     }, [conversationId, messageHistory, openai.responses]);
@@ -237,8 +258,8 @@ export function Chat({ id = null }: { id: string | null }) {
         }
     }, [ALLOWED_FILE_TYPES, MAX_FILE_SIZE, fileDropOffRef])
 
-    return <div className="w-full h-full border rounded-lg">
-        <div className="flex h-full w-full">
+    return <div className="w-full h-full border rounded-lg overflow-hidden">
+        <div className="flex h-full w-full min-w-0 min-h-0">
             {/* Chats */}
             <Resizable
                 width={chatHistoryWidth}
@@ -253,13 +274,13 @@ export function Chat({ id = null }: { id: string | null }) {
 
             </Resizable>
             {/* Chat Content */}
-            <div className="w-full h-full flex flex-col">
+            <div className="flex flex-col flex-1 min-w-0 min-h-0">
                 {/* Chat Header */}
-                <div className="w-full h-17 border-b"></div>
+                <div className="h-17 w-full shrink-0 border-b"></div>
                 {/* Chat Messages */}
-                <div className="w-full h-full overflow-scroll">
+                <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
                     {messageHistory.map((m) => {
-                        return <MessageBubble key={m.id} text={m.content} type={m.role} />
+                        return <MessageBubble key={m.id} message={m} />
                     })}
                 </div>
                 {/* Input */}
@@ -304,37 +325,69 @@ export function Chat({ id = null }: { id: string | null }) {
     </div>
 }
 
-function MessageBubble({ type, text }: { type: string, text: string }) {
+function MessageBubble({ message }: { message: MessageObject }) {
+    const type = message.role;
 
-    return <div className="flex flex-row gap-2 py-3">
-        <Message align={type === "user" ? "end" : "start"}>
-            <MessageContent>
-                {type === "user" ? <UserMessageBubble text={text} /> : <AssistantMessageBubble text={text} />}
-            </MessageContent>
-
-        </Message>
-    </div>
-
+    return (
+        <div className="flex flex-row gap-2 py-3">
+            <Message
+                align={type === "user" ? "end" : "start"}
+                className="min-w-0 max-w-full"
+            >
+                <MessageContent className="min-w-0 max-w-full">
+                    {type === "user" ? (
+                        <UserMessageBubble
+                            text={message.content}
+                            error={message.status === "error"}
+                        />
+                    ) : (
+                        <AssistantMessageBubble message={message} />
+                    )}
+                </MessageContent>
+            </Message>
+        </div>
+    );
 }
 
 function UserMessageBubble({ text, error = false }: { text: string, error?: boolean }) {
     return <Bubble>
-        <BubbleContent>
-            {text}
+        <BubbleContent className={`md-content ${error === true ? "text-red-200" : ""}`}>
+            <div className="md-content">
+
+                <Markdown
+                    components={markdownComponents}>{text}</Markdown>
+            </div>
         </BubbleContent>
     </Bubble>
 }
 
-function AssistantMessageBubble({ text }: { text: string }) {
-    return <div className="border-t border-b border-gray-200 bg-gray-50 pt-10 px-6 group">
-        <div>{text}</div>
-        <div className="flex flex-row-reverse gap-1 mt-2 h-8 text-gray-400">
-            <Button variant="ghost" size="icon-sm" className="hidden group-hover:flex">
-                <CopyIcon />
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="hidden group-hover:flex">
-                <RotateCcw />
-            </Button>
+
+function AssistantMessageBubble({ message }: { message: MessageObject }) {
+    const extensions = [streamingMarkdownExtension()];
+
+    return (
+        <div className="w-full min-w-0 max-w-full border-t border-b border-gray-200 bg-gray-50 px-6 pt-10 group">
+            <div
+                className={`md-content ${message.errorType === "error" ? "text-red-300" : ""
+                    }`}
+            >
+                <Markdown
+                    components={markdownComponents}
+                    extensions={extensions}
+                    highlighter={highlightMarkdownCode}
+                >
+                    {message.content}
+                </Markdown>
+            </div>
+
+            <div className="flex flex-row-reverse gap-1 mt-2 h-8 text-gray-400">
+                <Button variant="ghost" size="icon-sm" className="hidden group-hover:flex">
+                    <CopyIcon />
+                </Button>
+                <Button variant="ghost" size="icon-sm" className="hidden group-hover:flex">
+                    <RotateCcw />
+                </Button>
+            </div>
         </div>
-    </div>
+    );
 }
